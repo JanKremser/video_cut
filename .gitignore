@@ -3,3 +3,5 @@
 *.otio
 *.pyc
 __pycache__/
+*.mkv
+.vscode

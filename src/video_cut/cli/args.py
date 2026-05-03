@@ -46,6 +46,45 @@ def parse_args() -> argparse.Namespace:
         help="Disable ANSI color output",
     )
 
+    cut_parser = subparsers.add_parser(
+        "cut",
+        help="Cut video based on OTIO timeline (removes unnecessary cuts)",
+    )
+    cut_parser.add_argument(
+        "-t", "--timeline",
+        required=True,
+        metavar="FILE",
+        help="OpenTimelineIO (.otio) file to analyze",
+    )
+    cut_parser.add_argument(
+        "-i", "--input",
+        required=True,
+        metavar="FILE",
+        help="Source video file (MKV/HEVC/HDR10) to cut",
+    )
+    cut_parser.add_argument(
+        "-o", "--output",
+        required=True,
+        metavar="FILE",
+        help="Output video file after cutting",
+    )
+    cut_parser.add_argument(
+        "-k", "--track",
+        type=int,
+        default=0,
+        help="Video track index to analyze (default: 0)",
+    )
+    cut_parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable ANSI color output",
+    )
+    cut_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show segments without running FFmpeg",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
