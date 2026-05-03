@@ -14,6 +14,8 @@ def _clean_env() -> dict:
 def cut_segment(input_path: Path, output_path: Path, start_seconds: float, end_seconds: float) -> None:
     """Cut a segment from input_path using FFmpeg with stream copy (no re-encoding).
 
+    Copies all video, audio and subtitle streams.
+
     Args:
         input_path: Source video file
         output_path: Output segment file
@@ -23,8 +25,6 @@ def cut_segment(input_path: Path, output_path: Path, start_seconds: float, end_s
     Raises:
         RuntimeError: if ffmpeg fails
     """
-    duration = end_seconds - start_seconds
-
     try:
         subprocess.run(
             [
@@ -33,7 +33,12 @@ def cut_segment(input_path: Path, output_path: Path, start_seconds: float, end_s
                 "-ss", str(start_seconds),
                 "-to", str(end_seconds),
                 "-i", str(input_path),
-                "-c", "copy",
+                "-map", "0:v:0",
+                "-map", "0:a",
+                "-map", "0:s?",
+                "-c:v", "copy",
+                "-c:a", "copy",
+                "-c:s", "copy",
                 str(output_path),
             ],
             capture_output=True,
@@ -51,6 +56,8 @@ def cut_segment(input_path: Path, output_path: Path, start_seconds: float, end_s
 
 def concat_segments(segment_files: list[Path], output_path: Path) -> None:
     """Concatenate multiple segments into a single output file using FFmpeg concat demuxer.
+
+    Copies all video, audio and subtitle streams.
 
     Args:
         segment_files: List of segment file paths (in order)
@@ -75,7 +82,12 @@ def concat_segments(segment_files: list[Path], output_path: Path) -> None:
                 "-f", "concat",
                 "-safe", "0",
                 "-i", concat_list_path,
-                "-c", "copy",
+                "-map", "0:v:0",
+                "-map", "0:a",
+                "-map", "0:s?",
+                "-c:v", "copy",
+                "-c:a", "copy",
+                "-c:s", "copy",
                 str(output_path),
             ],
             capture_output=True,
