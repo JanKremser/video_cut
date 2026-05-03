@@ -15,6 +15,7 @@ def cut_video(
     video_fps: float,
     encode_opts: EncodeOptions | None = None,
     audio_stream_count: int = 1,
+    scale: str | None = None,
 ) -> None:
     """Cut and merge video segments using FFmpeg.
 
@@ -28,6 +29,7 @@ def cut_video(
         video_fps: Video frame rate (for progress calculation)
         encode_opts: If set, use libx265 re-encoding; if None, use stream copy
         audio_stream_count: Number of audio streams in source (for re-encoding)
+        scale: Optional scaling (e.g., '540' for 540p, '1280:720') — only for re-encoding
 
     Raises:
         RuntimeError: if ffmpeg operations fail
@@ -61,6 +63,7 @@ def cut_video(
             segments=segments,
             encode_opts=encode_opts,
             audio_stream_count=audio_stream_count,
+            scale=scale,
             on_progress=on_progress,
         )
     else:

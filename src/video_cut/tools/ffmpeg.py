@@ -140,6 +140,7 @@ def cut_all_segments_reencode(
     segments: list[SourceSegment],
     encode_opts: EncodeOptions,
     audio_stream_count: int = 1,
+    scale: str | None = None,
     on_progress: Callable[[FfmpegProgress], None] | None = None,
 ) -> None:
     """Encode all segments in a single FFmpeg pass using filter_complex.
@@ -156,6 +157,7 @@ def cut_all_segments_reencode(
         segments: All segments to extract and concatenate
         encode_opts: Encoding options (crf, preset, hdr metadata)
         audio_stream_count: Number of audio streams in the source
+        scale: Optional scaling (e.g., '540' for 540p, '1280:720' for 1280x720)
         on_progress: Optional callback for progress updates
 
     Raises:
@@ -166,7 +168,7 @@ def cut_all_segments_reencode(
         raise ValueError("No segments to encode")
 
     x265_params = _build_x265_params(encode_opts)
-    filter_complex = _build_filter_complex(segments, audio_stream_count)
+    filter_complex = _build_filter_complex(segments, audio_stream_count, scale)
 
     cmd = ["ffmpeg", "-y", "-i", str(input_path), "-filter_complex", filter_complex]
 
@@ -215,17 +217,19 @@ def cut_all_segments_reencode(
         raise RuntimeError("ffmpeg not found in PATH")
 
 
-def _build_filter_complex(segments: list[SourceSegment], num_audio: int) -> str:
-    """Build filter_complex string for trimming, PTS-reset, and concatenating all segments.
+def _build_filter_complex(segments: list[SourceSegment], num_audio: int, scale: str | None = None) -> str:
+    """Build filter_complex string for trimming, PTS-reset, scaling, and concatenating all segments.
 
     For N segments and M audio streams, produces filter graph that:
     - Trims video and each audio stream independently
     - Resets PTS timestamps for seamless concatenation
+    - Optionally scales video (e.g., '540' for 540p, '1280:720' for 1280x720)
     - Concatenates all segments into a single output
 
     Args:
         segments: List of segments with start/end times
         num_audio: Number of audio streams in source
+        scale: Optional scaling spec (None, '540', or '1280:720')
 
     Returns:
         filter_complex string suitable for ffmpeg -filter_complex
@@ -235,7 +239,18 @@ def _build_filter_complex(segments: list[SourceSegment], num_audio: int) -> str:
     for i, seg in enumerate(segments):
         s = seg.start_seconds
         e = seg.end_seconds
-        parts.append(f"[0:v:0]trim=start={s}:end={e},setpts=PTS-STARTPTS[v{i}]")
+
+        # Build video filter chain: trim -> [optional: scale] -> setpts
+        video_filters = f"trim=start={s}:end={e}"
+        if scale:
+            if ":" in scale:
+                video_filters += f",scale={scale}"
+            else:
+                video_filters += f",scale={scale}:-1"
+        video_filters += ",setpts=PTS-STARTPTS"
+
+        parts.append(f"[0:v:0]{video_filters}[v{i}]")
+
         for a in range(num_audio):
             parts.append(f"[0:a:{a}]atrim=start={s}:end={e},asetpts=PTS-STARTPTS[a{a}_{i}]")
 

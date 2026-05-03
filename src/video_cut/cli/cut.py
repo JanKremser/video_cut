@@ -95,6 +95,7 @@ def handle_cut(args) -> int:
             video_fps=video_info.fps,
             encode_opts=encode_opts,
             audio_stream_count=video_info.audio_stream_count,
+            scale=args.scale if hasattr(args, 'scale') else None,
         )
     except (RuntimeError, ValueError) as e:
         print_err(f"Error cutting video: {e}")

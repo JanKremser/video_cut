@@ -100,6 +100,11 @@ def parse_args() -> argparse.Namespace:
         default="slow",
         help="x265 preset: ultrafast, faster, fast, medium, slow, slower (default: slow)",
     )
+    cut_parser.add_argument(
+        "--scale",
+        metavar="SIZE",
+        help="Scale video to SIZE (e.g., '540' for 540p, '1280:720' for 1280x720) — only with --reencode",
+    )
 
     args = parser.parse_args()
 
