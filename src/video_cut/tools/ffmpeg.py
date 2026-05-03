@@ -3,6 +3,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from video_cut.typedefs.video_typing import EncodeOptions
+
 
 def _clean_env() -> dict:
     """Remove LD_LIBRARY_PATH to avoid conflicts."""
@@ -101,3 +103,79 @@ def concat_segments(segment_files: list[Path], output_path: Path) -> None:
         raise RuntimeError("ffmpeg not found in PATH")
     finally:
         Path(concat_list_path).unlink(missing_ok=True)
+
+
+def cut_segment_reencode(
+    input_path: Path,
+    output_path: Path,
+    start_seconds: float,
+    end_seconds: float,
+    encode_opts: EncodeOptions,
+) -> None:
+    """Cut a segment using libx265 re-encoding with HDR10 support.
+
+    Frame-accurate cutting with proper HDR10 metadata handling.
+
+    Args:
+        input_path: Source video file
+        output_path: Output segment file
+        start_seconds: Start time in seconds
+        end_seconds: End time in seconds
+        encode_opts: Encoding options (crf, preset, hdr metadata)
+
+    Raises:
+        RuntimeError: if ffmpeg fails
+    """
+    x265_params = _build_x265_params(encode_opts)
+
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-ss", str(start_seconds),
+                "-to", str(end_seconds),
+                "-i", str(input_path),
+                "-map", "0:v:0",
+                "-map", "0:a",
+                "-map", "0:s?",
+                "-c:v", "libx265",
+                "-crf", str(encode_opts.crf),
+                "-preset", encode_opts.preset,
+                "-pix_fmt", "yuv420p10le",
+                "-x265-params", x265_params,
+                "-c:a", "copy",
+                "-c:s", "copy",
+                str(output_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            env=_clean_env(),
+        )
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(
+            f"FFmpeg failed to encode segment {start_seconds}s-{end_seconds}s: {e.stderr}"
+        )
+    except FileNotFoundError:
+        raise RuntimeError("ffmpeg not found in PATH")
+
+
+def _build_x265_params(encode_opts: EncodeOptions) -> str:
+    """Build x265-params string with HDR10 settings."""
+    params = [
+        "colorprim=bt2020",
+        "transfer=smpte2084",
+        "colormatrix=bt2020nc",
+        "hdr-opt=1",
+        "hdr10=1",
+        "repeat-headers=1",
+    ]
+
+    if encode_opts.hdr and encode_opts.hdr.master_display:
+        params.append(f"master-display={encode_opts.hdr.master_display}")
+
+    if encode_opts.hdr and encode_opts.hdr.max_cll:
+        params.append(f"max-cll={encode_opts.hdr.max_cll}")
+
+    return ":".join(params)

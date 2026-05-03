@@ -84,6 +84,22 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Show segments without running FFmpeg",
     )
+    cut_parser.add_argument(
+        "--reencode",
+        action="store_true",
+        help="Use libx265 re-encoding for frame-accurate cuts (slower but precise)",
+    )
+    cut_parser.add_argument(
+        "--crf",
+        type=int,
+        default=18,
+        help="CRF for re-encoding (default: 18, lower=higher quality)",
+    )
+    cut_parser.add_argument(
+        "--preset",
+        default="slow",
+        help="x265 preset: ultrafast, faster, fast, medium, slow, slower (default: slow)",
+    )
 
     args = parser.parse_args()
 
