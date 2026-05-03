@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video_cut"
+version = "0.1.0"
+description = "Analyze OTIO edit timelines and print merged source segments"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Jan Kremser", email = "j.kremser@ambifox.com"}
+]
+keywords = ["video", "otio", "opentimelineio", "editing", "cut", "hdr", "hevc"]
+
+dependencies = [
+    "opentimelineio>=0.17.0",
+]
+
+[project.scripts]
+video_cut = "video_cut.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
