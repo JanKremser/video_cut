@@ -21,6 +21,9 @@ dependencies = [
 [project.scripts]
 video_cut = "video_cut.main:main"
 
+[project.optional-dependencies]
+build = ["pyinstaller>=6.0"]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

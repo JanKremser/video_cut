@@ -5,3 +5,6 @@
 __pycache__/
 *.mkv
 .vscode
+dist/
+build/
+*.spec.bak
