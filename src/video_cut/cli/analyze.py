@@ -13,13 +13,13 @@ def handle_analyze(args) -> int:
 
     otio_path = Path(args.timeline)
     if not otio_path.exists():
-        print_err(f"OTIO-Datei nicht gefunden: {otio_path}")
+        print_err(f"OTIO file not found: {otio_path}")
         return 1
 
     if args.video:
         video_path = Path(args.video)
         if not video_path.exists():
-            print_err(f"Videodatei nicht gefunden: {video_path}")
+            print_err(f"Video file not found: {video_path}")
             return 1
         validator = VideoValidator()
         try:
@@ -39,7 +39,7 @@ def handle_analyze(args) -> int:
     try:
         segments: list[SourceSegment] = merge_clips(clips=clips)
     except Exception as e:
-        print_err(f"Fehler beim Zusammenführen der Clips: {e}")
+        print_err(f"Error merging clips: {e}")
         return 1
 
     for segment in segments:

@@ -102,8 +102,8 @@ def render_progress(
     lines = [
         f"-- Segment {segment_idx}/{total_segments} ({segment_start} --> {segment_end}) " + "-" * 40,
         f"Frame    : {progress.frame:6d} / {total_frames:<6d} | FPS: {progress.fps:6.1f} | Speed: {progress.speed:5.2f}x",
-        f"ETA      : {format_seconds(eta_sec)} ~> Fertig um {finish_time.strftime('%H:%M')}",
-        f"Zeit     : {format_seconds(elapsed_sec)}",
+        f"ETA      : {format_seconds(eta_sec)} ~> Done at {finish_time.strftime('%H:%M')}",
+        f"Elapsed  : {format_seconds(elapsed_sec)}",
         create_progress_bar(percent),
         "-" * 80,
     ]

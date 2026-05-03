@@ -52,8 +52,8 @@ def print_summary(
 
     print()
     print(
-        f"Summary: {len(segments)} Segmente | {merged_cuts} unnötige Schnitte zusammengeführt"
-        f" | Gesamtdauer: {total_tc}"
+        f"Summary: {len(segments)} segments | {merged_cuts} merged unnecessary cuts"
+        f" | Total duration: {total_tc}"
     )
 
 

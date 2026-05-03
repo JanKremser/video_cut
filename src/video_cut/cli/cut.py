@@ -16,12 +16,12 @@ def handle_cut(args) -> int:
 
     otio_path = Path(args.timeline)
     if not otio_path.exists():
-        print_err(f"OTIO-Datei nicht gefunden: {otio_path}")
+        print_err(f"OTIO file not found: {otio_path}")
         return 1
 
     input_path = Path(args.input)
     if not input_path.exists():
-        print_err(f"Eingabe-Videodatei nicht gefunden: {input_path}")
+        print_err(f"Input video file not found: {input_path}")
         return 1
 
     output_path = Path(args.output)
@@ -44,10 +44,10 @@ def handle_cut(args) -> int:
     try:
         segments: list[SourceSegment] = merge_clips(clips=clips)
     except Exception as e:
-        print_err(f"Fehler beim Zusammenführen der Clips: {e}")
+        print_err(f"Error merging clips: {e}")
         return 1
 
-    print("Segmente zum Schneiden:")
+    print("Segments to cut:")
     for segment in segments:
         print_segment(segment=segment, use_color=use_color)
 
@@ -55,14 +55,14 @@ def handle_cut(args) -> int:
 
     if args.dry_run:
         if args.reencode:
-            print("[Dry-run] Würde mit libx265 Re-encoding schneiden (frame-genau)")
+            print("[Dry-run] Would cut with libx265 re-encoding (frame-accurate)")
         else:
-            print("[Dry-run] Würde mit Stream-Copy schneiden (schnell, keyframe-abhängig)")
+            print("[Dry-run] Would cut with stream-copy (fast, keyframe-dependent)")
         return 0
 
     encode_opts = None
     if args.reencode:
-        print("HDR10-Metadaten werden extrahiert...")
+        print("Extracting HDR10 metadata...")
         try:
             hdr_meta = extract_hdr_metadata(input_path)
             encode_opts = EncodeOptions(
@@ -71,21 +71,21 @@ def handle_cut(args) -> int:
                 hdr=hdr_meta,
             )
             if hdr_meta.master_display:
-                print(f"  ✓ Master Display gefunden")
+                print(f"  ✓ Master Display found")
             if hdr_meta.max_cll:
-                print(f"  ✓ MaxCLL gefunden")
+                print(f"  ✓ MaxCLL found")
             if not hdr_meta.master_display and not hdr_meta.max_cll:
-                print_warn("Keine HDR10-Metadaten gefunden, aber Re-encoding wird durchgeführt")
+                print_warn("No HDR10 metadata found, but re-encoding will proceed")
         except RuntimeError as e:
-            print_err(f"Fehler beim Extrahieren der HDR-Metadaten: {e}")
+            print_err(f"Error extracting HDR10 metadata: {e}")
             return 1
 
         mode = f"libx265 (CRF {args.crf}, Preset {args.preset})"
     else:
-        mode = "Stream-Copy (schnell, keyframe-abhängig)"
+        mode = "stream-copy (fast, keyframe-dependent)"
 
-    print(f"\nSchneiden mit {mode}...")
-    print(f"Ausgabe wird zu: {output_path}")
+    print(f"\nCutting with {mode}...")
+    print(f"Output to: {output_path}")
 
     try:
         cut_video(
@@ -96,8 +96,8 @@ def handle_cut(args) -> int:
             encode_opts=encode_opts,
         )
     except (RuntimeError, ValueError) as e:
-        print_err(f"Fehler beim Schneiden: {e}")
+        print_err(f"Error cutting video: {e}")
         return 1
 
-    print(f"\n✓ Video erfolgreich geschnitten: {output_path}")
+    print(f"\n✓ Video cut successfully: {output_path}")
     return 0
