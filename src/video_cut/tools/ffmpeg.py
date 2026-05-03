@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Callable
 
 from video_cut.cli.progress import FfmpegProgress
+from video_cut.typedefs.otio_typing import SourceSegment
 from video_cut.typedefs.video_typing import EncodeOptions
 
 
@@ -133,48 +134,57 @@ def concat_segments(segment_files: list[Path], output_path: Path) -> None:
         Path(concat_list_path).unlink(missing_ok=True)
 
 
-def cut_segment_reencode(
+def cut_all_segments_reencode(
     input_path: Path,
     output_path: Path,
-    start_seconds: float,
-    end_seconds: float,
+    segments: list[SourceSegment],
     encode_opts: EncodeOptions,
+    audio_stream_count: int = 1,
     on_progress: Callable[[FfmpegProgress], None] | None = None,
 ) -> None:
-    """Cut a segment using libx265 re-encoding with HDR10 support.
+    """Encode all segments in a single FFmpeg pass using filter_complex.
 
-    Frame-accurate cutting with proper HDR10 metadata handling.
+    All segments are trimmed, PTS-reset, and concatenated in one encoding pass,
+    avoiding frame drops at segment boundaries that would occur with per-segment
+    encoding followed by concat.
+
+    Subtitles are copied directly from the input (no subtitle filters in FFmpeg).
 
     Args:
         input_path: Source video file
-        output_path: Output segment file
-        start_seconds: Start time in seconds
-        end_seconds: End time in seconds
+        output_path: Output file
+        segments: All segments to extract and concatenate
         encode_opts: Encoding options (crf, preset, hdr metadata)
+        audio_stream_count: Number of audio streams in the source
         on_progress: Optional callback for progress updates
 
     Raises:
         RuntimeError: if ffmpeg fails
+        ValueError: if segments is empty
     """
-    x265_params = _build_x265_params(encode_opts)
+    if not segments:
+        raise ValueError("No segments to encode")
 
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-ss", str(start_seconds),
-        "-to", str(end_seconds),
-        "-i", str(input_path),
-        "-map", "0:v:0",
-        "-map", "0:a",
-        "-map", "0:s?",
+    x265_params = _build_x265_params(encode_opts)
+    filter_complex = _build_filter_complex(segments, audio_stream_count)
+
+    cmd = ["ffmpeg", "-y", "-i", str(input_path), "-filter_complex", filter_complex]
+
+    cmd.extend(["-map", "[outv]"])
+    for a in range(audio_stream_count):
+        cmd.extend(["-map", f"[outa{a}]"])
+    cmd.extend(["-map", "0:s?"])
+
+    cmd.extend([
         "-c:v", "libx265",
         "-crf", str(encode_opts.crf),
         "-preset", encode_opts.preset,
         "-pix_fmt", "yuv420p10le",
         "-x265-params", x265_params,
-        "-c:a", "copy",
+        "-c:a", "eac3",
+        "-b:a", "448k",
         "-c:s", "copy",
-    ]
+    ])
 
     if on_progress:
         cmd.extend(["-progress", "pipe:2"])
@@ -200,11 +210,46 @@ def cut_segment_reencode(
 
         returncode = process.wait()
         if returncode != 0:
-            raise RuntimeError(
-                f"FFmpeg failed to encode segment {start_seconds}s-{end_seconds}s"
-            )
+            raise RuntimeError("FFmpeg failed to encode segments")
     except FileNotFoundError:
         raise RuntimeError("ffmpeg not found in PATH")
+
+
+def _build_filter_complex(segments: list[SourceSegment], num_audio: int) -> str:
+    """Build filter_complex string for trimming, PTS-reset, and concatenating all segments.
+
+    For N segments and M audio streams, produces filter graph that:
+    - Trims video and each audio stream independently
+    - Resets PTS timestamps for seamless concatenation
+    - Concatenates all segments into a single output
+
+    Args:
+        segments: List of segments with start/end times
+        num_audio: Number of audio streams in source
+
+    Returns:
+        filter_complex string suitable for ffmpeg -filter_complex
+    """
+    parts = []
+
+    for i, seg in enumerate(segments):
+        s = seg.start_seconds
+        e = seg.end_seconds
+        parts.append(f"[0:v:0]trim=start={s}:end={e},setpts=PTS-STARTPTS[v{i}]")
+        for a in range(num_audio):
+            parts.append(f"[0:a:{a}]atrim=start={s}:end={e},asetpts=PTS-STARTPTS[a{a}_{i}]")
+
+    concat_inputs = "".join(
+        f"[v{i}]" + "".join(f"[a{a}_{i}]" for a in range(num_audio))
+        for i in range(len(segments))
+    )
+
+    concat_outputs = "[outv]" + "".join(f"[outa{a}]" for a in range(num_audio))
+    parts.append(
+        f"{concat_inputs}concat=n={len(segments)}:v=1:a={num_audio}{concat_outputs}"
+    )
+
+    return ";".join(parts)
 
 
 def _build_x265_params(encode_opts: EncodeOptions) -> str:

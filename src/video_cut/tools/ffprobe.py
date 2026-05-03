@@ -42,10 +42,12 @@ def probe_video_info(filepath: Path) -> VideoInfo:
     data = json.loads(result.stdout)
 
     video_stream = None
+    audio_stream_count = 0
     for stream in data.get("streams", []):
-        if stream.get("codec_type") == "video":
+        if stream.get("codec_type") == "video" and video_stream is None:
             video_stream = stream
-            break
+        elif stream.get("codec_type") == "audio":
+            audio_stream_count += 1
 
     if video_stream is None:
         raise RuntimeError(f"No video stream found in {filepath}")
@@ -73,6 +75,7 @@ def probe_video_info(filepath: Path) -> VideoInfo:
         width=video_stream.get("width", 0),
         height=video_stream.get("height", 0),
         fps=fps,
+        audio_stream_count=max(audio_stream_count, 1),
     )
 
 

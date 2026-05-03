@@ -14,6 +14,7 @@ class VideoInfo:
     width: int
     height: int
     fps: float = 0.0
+    audio_stream_count: int = 1
 
 
 @dataclass

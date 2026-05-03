@@ -9,7 +9,6 @@ echo "Container: debian:bookworm with Python 3.12"
 docker run --rm \
   -v "$SCRIPT_DIR:/workspace" \
   -w /workspace \
-  --user "$(id -u):$(id -g)" \
   debian:bookworm \
   bash -c '
 set -euo pipefail
