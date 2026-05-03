@@ -1,8 +1,13 @@
 import os
+import re
 import subprocess
 import tempfile
+import threading
+import time
 from pathlib import Path
+from typing import Callable
 
+from video_cut.cli.progress import FfmpegProgress
 from video_cut.typedefs.video_typing import EncodeOptions
 
 
@@ -13,7 +18,13 @@ def _clean_env() -> dict:
     return env
 
 
-def cut_segment(input_path: Path, output_path: Path, start_seconds: float, end_seconds: float) -> None:
+def cut_segment(
+    input_path: Path,
+    output_path: Path,
+    start_seconds: float,
+    end_seconds: float,
+    on_progress: Callable[[FfmpegProgress], None] | None = None,
+) -> None:
     """Cut a segment from input_path using FFmpeg with stream copy (no re-encoding).
 
     Copies all video, audio and subtitle streams.
@@ -23,35 +34,52 @@ def cut_segment(input_path: Path, output_path: Path, start_seconds: float, end_s
         output_path: Output segment file
         start_seconds: Start time in seconds
         end_seconds: End time in seconds (exclusive)
+        on_progress: Optional callback for progress updates
 
     Raises:
         RuntimeError: if ffmpeg fails
     """
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-ss", str(start_seconds),
+        "-to", str(end_seconds),
+        "-i", str(input_path),
+        "-map", "0:v:0",
+        "-map", "0:a",
+        "-map", "0:s?",
+        "-c:v", "copy",
+        "-c:a", "copy",
+        "-c:s", "copy",
+    ]
+
+    if on_progress:
+        cmd.extend(["-progress", "pipe:2"])
+
+    cmd.append(str(output_path))
+
     try:
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-y",
-                "-ss", str(start_seconds),
-                "-to", str(end_seconds),
-                "-i", str(input_path),
-                "-map", "0:v:0",
-                "-map", "0:a",
-                "-map", "0:s?",
-                "-c:v", "copy",
-                "-c:a", "copy",
-                "-c:s", "copy",
-                str(output_path),
-            ],
-            capture_output=True,
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE if on_progress else subprocess.DEVNULL,
+            stderr=subprocess.PIPE if on_progress else subprocess.DEVNULL,
             text=True,
-            check=True,
             env=_clean_env(),
         )
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(
-            f"FFmpeg failed to cut segment {start_seconds}s-{end_seconds}s: {e.stderr}"
-        )
+
+        if on_progress:
+            reader = threading.Thread(
+                target=_progress_reader_thread,
+                args=(process, on_progress),
+                daemon=True,
+            )
+            reader.start()
+
+        returncode = process.wait()
+        if returncode != 0:
+            raise RuntimeError(
+                f"FFmpeg failed to cut segment {start_seconds}s-{end_seconds}s"
+            )
     except FileNotFoundError:
         raise RuntimeError("ffmpeg not found in PATH")
 
@@ -111,6 +139,7 @@ def cut_segment_reencode(
     start_seconds: float,
     end_seconds: float,
     encode_opts: EncodeOptions,
+    on_progress: Callable[[FfmpegProgress], None] | None = None,
 ) -> None:
     """Cut a segment using libx265 re-encoding with HDR10 support.
 
@@ -122,41 +151,58 @@ def cut_segment_reencode(
         start_seconds: Start time in seconds
         end_seconds: End time in seconds
         encode_opts: Encoding options (crf, preset, hdr metadata)
+        on_progress: Optional callback for progress updates
 
     Raises:
         RuntimeError: if ffmpeg fails
     """
     x265_params = _build_x265_params(encode_opts)
 
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-ss", str(start_seconds),
+        "-to", str(end_seconds),
+        "-i", str(input_path),
+        "-map", "0:v:0",
+        "-map", "0:a",
+        "-map", "0:s?",
+        "-c:v", "libx265",
+        "-crf", str(encode_opts.crf),
+        "-preset", encode_opts.preset,
+        "-pix_fmt", "yuv420p10le",
+        "-x265-params", x265_params,
+        "-c:a", "copy",
+        "-c:s", "copy",
+    ]
+
+    if on_progress:
+        cmd.extend(["-progress", "pipe:2"])
+
+    cmd.append(str(output_path))
+
     try:
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-y",
-                "-ss", str(start_seconds),
-                "-to", str(end_seconds),
-                "-i", str(input_path),
-                "-map", "0:v:0",
-                "-map", "0:a",
-                "-map", "0:s?",
-                "-c:v", "libx265",
-                "-crf", str(encode_opts.crf),
-                "-preset", encode_opts.preset,
-                "-pix_fmt", "yuv420p10le",
-                "-x265-params", x265_params,
-                "-c:a", "copy",
-                "-c:s", "copy",
-                str(output_path),
-            ],
-            capture_output=True,
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE if on_progress else subprocess.DEVNULL,
+            stderr=subprocess.PIPE if on_progress else subprocess.DEVNULL,
             text=True,
-            check=True,
             env=_clean_env(),
         )
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(
-            f"FFmpeg failed to encode segment {start_seconds}s-{end_seconds}s: {e.stderr}"
-        )
+
+        if on_progress:
+            reader = threading.Thread(
+                target=_progress_reader_thread,
+                args=(process, on_progress),
+                daemon=True,
+            )
+            reader.start()
+
+        returncode = process.wait()
+        if returncode != 0:
+            raise RuntimeError(
+                f"FFmpeg failed to encode segment {start_seconds}s-{end_seconds}s"
+            )
     except FileNotFoundError:
         raise RuntimeError("ffmpeg not found in PATH")
 
@@ -179,3 +225,79 @@ def _build_x265_params(encode_opts: EncodeOptions) -> str:
         params.append(f"max-cll={encode_opts.hdr.max_cll}")
 
     return ":".join(params)
+
+
+class _ProgressAccumulator:
+    """Accumulates FFmpeg progress key=value pairs until progress=continue."""
+    def __init__(self):
+        self.data = {}
+
+    def add_line(self, line: str) -> FfmpegProgress | None:
+        """Add a progress line and return FfmpegProgress if complete.
+
+        Returns:
+            FfmpegProgress when progress=continue is found, None otherwise
+        """
+        line = line.strip()
+        if not line or "=" not in line:
+            return None
+
+        key, value = line.split("=", 1)
+        self.data[key] = value
+
+        if key == "progress" and value in ("continue", "end"):
+            return self._build_progress()
+
+        return None
+
+    def _build_progress(self) -> FfmpegProgress:
+        """Build FfmpegProgress from accumulated data."""
+        progress = FfmpegProgress()
+
+        try:
+            if "frame" in self.data:
+                progress.frame = int(self.data["frame"])
+            if "fps" in self.data:
+                progress.fps = float(self.data["fps"])
+            if "speed" in self.data:
+                match = re.search(r"([\d.]+)x", self.data["speed"])
+                if match:
+                    progress.speed = float(match.group(1))
+            if "bitrate" in self.data:
+                match = re.search(r"([\d.]+)", self.data["bitrate"])
+                if match:
+                    progress.bitrate_kbps = float(match.group(1))
+            if "total_size" in self.data:
+                progress.total_size_bytes = int(self.data["total_size"])
+        except (ValueError, AttributeError, KeyError):
+            pass
+
+        self.data.clear()
+        return progress
+
+
+def _progress_reader_thread(
+    process: subprocess.Popen,
+    on_progress: Callable[[FfmpegProgress], None],
+) -> None:
+    """Read FFmpeg progress output in a separate thread.
+
+    Args:
+        process: subprocess.Popen object for FFmpeg
+        on_progress: Callback function called with each progress update
+    """
+    try:
+        if process.stderr is None:
+            return
+
+        accumulator = _ProgressAccumulator()
+
+        for line in iter(process.stderr.readline, ""):
+            if not line:
+                break
+
+            progress = accumulator.add_line(line)
+            if progress:
+                on_progress(progress)
+    except Exception:
+        pass

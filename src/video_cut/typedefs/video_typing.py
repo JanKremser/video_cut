@@ -13,6 +13,7 @@ class VideoInfo:
     total_frames: int | None
     width: int
     height: int
+    fps: float = 0.0
 
 
 @dataclass

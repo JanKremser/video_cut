@@ -60,6 +60,8 @@ def probe_video_info(filepath: Path) -> VideoInfo:
         except (ValueError, TypeError):
             pass
 
+    fps = _parse_fps(video_stream.get("r_frame_rate", ""))
+
     return VideoInfo(
         filepath=str(filepath),
         codec_name=video_stream.get("codec_name", ""),
@@ -70,4 +72,27 @@ def probe_video_info(filepath: Path) -> VideoInfo:
         total_frames=total_frames,
         width=video_stream.get("width", 0),
         height=video_stream.get("height", 0),
+        fps=fps,
     )
+
+
+def _parse_fps(r_frame_rate: str) -> float:
+    """Parse r_frame_rate string (e.g., '24000/1001' or '24') to float.
+
+    Args:
+        r_frame_rate: Frame rate string from ffprobe
+
+    Returns:
+        FPS as float, or 0.0 if parsing fails
+    """
+    if not r_frame_rate:
+        return 0.0
+
+    try:
+        if "/" in r_frame_rate:
+            num, den = r_frame_rate.split("/")
+            return float(num) / float(den)
+        else:
+            return float(r_frame_rate)
+    except (ValueError, ZeroDivisionError):
+        return 0.0

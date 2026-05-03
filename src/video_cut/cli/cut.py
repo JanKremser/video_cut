@@ -28,7 +28,7 @@ def handle_cut(args) -> int:
 
     validator = VideoValidator()
     try:
-        validator.validate(filepath=input_path)
+        video_info = validator.validate(filepath=input_path)
     except RuntimeError as e:
         print_err(str(e))
         return 1
@@ -88,19 +88,16 @@ def handle_cut(args) -> int:
     print(f"Ausgabe wird zu: {output_path}")
 
     try:
-        def progress_cb(idx: int, total: int, segment: SourceSegment) -> None:
-            print(f"  [{idx}/{total}] Schneide Segment {segment.index}...", flush=True)
-
         cut_video(
             input_path=input_path,
             output_path=output_path,
             segments=segments,
+            video_fps=video_info.fps,
             encode_opts=encode_opts,
-            progress_cb=progress_cb,
         )
     except (RuntimeError, ValueError) as e:
         print_err(f"Fehler beim Schneiden: {e}")
         return 1
 
-    print(f"✓ Video erfolgreich geschnitten: {output_path}")
+    print(f"\n✓ Video erfolgreich geschnitten: {output_path}")
     return 0
